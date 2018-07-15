@@ -20,6 +20,7 @@ The following plots are the final outcome of two different analysis:
         :alt: Outcome plot example1
 
 **Slope made of BIM material**
+
 .. figure:: https://rawgit.com/eamontoyaa/pybimstab/master/examples/figures/coverPlot2.svg
         :alt: Outcome plot example2
 
