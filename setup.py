@@ -26,10 +26,13 @@ setup(
     author_email='eamontoyaa@gmail.com',
     classifiers=[
         'Development Status :: 2 - Pre-Alpha',
-        'Intended Audience :: Developers',
+        'Intended Audience :: Science/Research',
+        'Intended Audience :: Education',
         'License :: OSI Approved :: BSD License',
         'Natural Language :: English',
         'Programming Language :: Python :: 3.6',
+        'Topic :: Scientific/Engineering'
+        'Topic :: Scientific/Engineering :: Mathematics',
     ],
     description="Application software to evaluate the stability of slopes made of Blocks-In-Matrix materials",
     entry_points={
@@ -43,7 +46,7 @@ setup(
     include_package_data=True,
     keywords=['slope stability', 'GLE', 'bimsoil', 'bimrock', 'tortuosity', 'A-star', 'Python', 'application software'],
     name='pybimstab',
-    packages=find_packages(include=['pybimstab']),
+    packages=find_packages(exclude=['docs', 'tests']),
     setup_requires=setup_requirements,
     test_suite='tests',
     tests_require=test_requirements,
