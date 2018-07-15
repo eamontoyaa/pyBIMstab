@@ -12,7 +12,7 @@ This example is the simplest one that can be executed with **pyBIMstab**:
 .. literalinclude:: ../examples/figuresScripts/slopestabl_example1.py
    :language: python
 
-.. figure:: https://rawgit.com/eamontoyaa/jelinekstat/master/examples/figures/slopestabl_example1.svg
+.. figure:: https://rawgit.com/eamontoyaa/pybimstab/master/examples/figures/slopestabl_example1.svg
     :alt: shortSCR_example
 
 .. only:: html
@@ -28,7 +28,7 @@ This example is the most complex one that can be executed with **pyBIMstab**:
 .. literalinclude:: ../examples/figuresScripts/slopestabl_example3.py
    :language: python
 
-.. figure:: https://rawgit.com/eamontoyaa/jelinekstat/master/examples/figures/slopestabl_example3.svg
+.. figure:: https://rawgit.com/eamontoyaa/pybimstab/master/examples/figures/slopestabl_example3.svg
     :alt: shortSCR_example
 
 .. only:: html

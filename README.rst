@@ -19,15 +19,20 @@ General Limit Equilibrium (GLE) method of
 `Fredlund & Krahn (1977) <https://doi.org/10.1139/t77-045>`_.
 
 The slip surface has a tortuous geometry and is optimally found by using the
-math:`\\mathrm{A}^\\ast` algorithm proposed by 
+A-star algorithm proposed by 
 `Hart, Nilsson & Raphael (1968) <https://doi.org/10.1109/TSSC.1968.300136>`_.
 
-The following plot is the final outcome of an analysis:
+The following plots are the final outcome of two different analysis:
 
-.. figure:: https://rawgit.com/eamontoyaa/pybimstab/master/examples/figures/coverPlot.svg
-        :alt: Outcome plot example
+**Homogeneus slope**
 
-It also works for slopes with an homogeneus material with no blocks.
+.. figure:: https://rawgit.com/eamontoyaa/pybimstab/master/examples/figures/coverPlot1.svg
+        :alt: Outcome plot example1
+
+**Slope made of BIM material**
+.. figure:: https://rawgit.com/eamontoyaa/pybimstab/master/examples/figures/coverPlot2.svg
+        :alt: Outcome plot example2
+
 
 Features
 --------
