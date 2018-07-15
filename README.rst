@@ -24,7 +24,7 @@ math:`\\mathrm{A}^\\ast` algorithm proposed by
 
 The following plot is the final outcome of an analysis:
 
-.. figure:: https://rawgit.com/eamontoyaa/jelinekstat/master/examples/figures/coverPlot.svg
+.. figure:: https://rawgit.com/eamontoyaa/pybimstab/master/examples/figures/coverPlot.svg
         :alt: Outcome plot example
 
 It also works for slopes with an homogeneus material with no blocks.
