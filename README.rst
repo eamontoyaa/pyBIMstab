@@ -2,13 +2,22 @@
 pyBIMstab
 =========
 
+.. image:: https://img.shields.io/badge/Made%20with-Python-brightgreen.svg
+        :target: https://www.python.org/
+        :alt: made-with-python
 
 .. image:: https://img.shields.io/pypi/v/pybimstab.svg
         :target: https://pypi.python.org/pypi/pybimstab
+        :alt: PyPI
+
+.. image:: https://img.shields.io/badge/License-BSD%202--Clause-brightgreen.svg
+        :target: https://github.com/eamontoyaa/pybimstab/blob/master/LICENSE
+        :alt: License
 
 .. image:: https://readthedocs.org/projects/pybimstab/badge/?version=latest
         :target: https://pybimstab.readthedocs.io/en/latest/?badge=latest
         :alt: Documentation Status
+
 
 
 ``pybimstab`` is an application software in **Python 3** to evaluate the factor
