@@ -2,7 +2,7 @@
 '''
 Module for defining the repetitive functions to manipulate the
 `shapely <https://pypi.python.org/pypi/Shapely>`_ objects that are used in the
-classed for performing the slope stabity analysis.
+classes for performing the slope stabity analysis.
 '''
 
 
@@ -61,10 +61,10 @@ def upperLowerSegm(line1, line2):
 
     Examples:
         >>> from shapely.geometry import LineString
-        >>> from pybimstab.tools import upperlowersegm
+        >>> from pybimstab.tools import upperLowerSegm
         >>> line1 = LineString([(0, 0), (5, 0)])
         >>> line2 = LineString([(0, 5), (5, -5)])
-        >>> upperLine, lowerLine = upperlowersegm(line1, line2)
+        >>> upperLine, lowerLine = upperLowerSegm(line1, line2)
         >>> upperLine, lowerLine
         (array([[ 0. ,  0. ],
                 [ 2.5,  0. ],
@@ -154,7 +154,7 @@ def getPointAtX(line, x):
 
     Examples:
         >>> from shapely.geometry import LineString
-        >>> from pybimstab.tools import upperlowersegm
+        >>> from pybimstab.tools import upperLowerSegm, getPointAtX
         >>> line = LineString([(0, 0), (5, 0)])
         >>> x = 2.5
         >>> point = getPointAtX(line, x)
@@ -169,6 +169,8 @@ def getPointAtX(line, x):
         point = line.interpolate(1, normalized=True)
     else:
         point = line.intersection(vertLine)
+    if point.geom_type is not 'Point':
+        point = point.centroid
     return point
 
 
@@ -193,7 +195,7 @@ def extractSegment(line, distance1, distance2):
 
     Examples:
         >>> from shapely.geometry import LineString
-        >>> from pybimstab.tools import upperlowersegm
+        >>> from pybimstab.tools import upperLowerSegm, extractSegment
         >>> line = LineString([(0, 0), (5, 0)])
         >>> distance1, distance2 = 1, 3
         >>> segment = extractSegment(line, distance1, distance2)

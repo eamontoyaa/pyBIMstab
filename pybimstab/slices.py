@@ -509,15 +509,17 @@ class Slices:
         minHztSlipDist = self.slipSurfCoords[0].min()
         xCoords = np.linspace(minHztSlipDist, maxHztSlipDist, self.numSlices+1)
         if self.bim is not None:
-            xIdxCoords = np.int_(np.array(xCoords) / self.bim.tileSize)
-            xCoords = [self.bim.xCells[0, x] + self.bim.tileSize
-                       for x in xIdxCoords]
-            xCoords[0] = minHztSlipDist  # Reeplace for the left most point
-            xCoords[-1] = maxHztSlipDist  # Reeplace for the right most poin
-            # Check the slices are such that the minimum width is the tile size
-            if xIdxCoords[-1] - xIdxCoords[0] < self.numSlices:
-                setattr(self, 'numSlices', xIdxCoords[-1] - xIdxCoords[0] - 1)
-                self.createSlices()
+            sliceWidth = (maxHztSlipDist - minHztSlipDist) / self.numSlices
+            k = np.ceil(sliceWidth / self.bim.tileSize)
+            xCoords = np.arange(minHztSlipDist,
+                                maxHztSlipDist + k * self.bim.tileSize,
+                                k * self.bim.tileSize)
+            xCoords = list(xCoords)
+            while xCoords[-1] > maxHztSlipDist:
+                xCoords.pop()
+            xCoords.append(maxHztSlipDist)
+            xCoords = np.unique(xCoords)
+            setattr(self, 'numSlices', len(xCoords) - 1)
 
         # Transform the  surfaces to LineString
         terrainLS = LineString(self.slopeCoords[:, 1:-2].T)
@@ -711,7 +713,7 @@ class Slices:
                                shrink=0.15, aspect=3)
             bar.ax.set_yticklabels(ticksLabels, fontsize='small')
         for slice_ in self.slices:
-            ax.plot(slice_.coords[0], slice_.coords[1], ':r', lw=0.25)
+            ax.plot(slice_.coords[0], slice_.coords[1], ':r', lw=0.5)
         ax.plot(self.slipSurfCoords[0], self.slipSurfCoords[1], '-r',
                 label='slip surface')
         ax.plot(self.slopeCoords[0], self.slopeCoords[1], '-k')

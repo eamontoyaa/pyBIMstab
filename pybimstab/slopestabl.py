@@ -774,7 +774,7 @@ class SlopeStabl:
                                shrink=0.15, aspect=3)
             bar.ax.set_yticklabels(ticksLabels, fontsize='small')
         for slice_ in self.slices.slices:  # Plotting each slice
-            ax1.plot(slice_.coords[0], slice_.coords[1], ':r', lw=0.25)
+            ax1.plot(slice_.coords[0], slice_.coords[1], ':r', lw=0.5)
         ax1.plot(self.slices.slipSurfCoords[0], self.slices.slipSurfCoords[1],
                  '-r')
         ax1.plot(*self.slices.rotationPt, '.r')
