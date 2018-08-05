@@ -7,4 +7,4 @@ __all__ = ['astar', 'bim', 'polygon', 'slices', 'slipsurface', 'slope', 'slopest
 
 __author__ = """Exneyder A. Montoya-Araque & Ludger O. Suarez-Burgoa"""
 __email__ = 'eamontoyaa@gmail.com'
-__version__ = '0.1.1'
+__version__ = '0.1.2'
