@@ -17,8 +17,8 @@ class SlopeStabl:
     Attributes:
         slices (`Slices` object): object that contains the data structure of
             the slices in which the sliding mass has been divided.
-        fs (`float` or `int`): Initial value of factor of safety for starting
-            the iterarive algorithm. ``1`` is the default value.
+        seedFS (`float` or `int`): Initial value of factor of safety for
+            starting the iterarive algorithm. ``1`` is the default value.
         lambda_ (`float` or `int`): Factor that multiplies the interlice
             function to determine the interslices horizontal forces. ``0`` is
             the default value.
@@ -33,7 +33,19 @@ class SlopeStabl:
             diference between the 2 last values gotten of factor of safety and
             lambda, it means, two tolerances have to be reached. ``1e-3`` is
             the default value.
+        interSlcFunc (`str` or 'float'): Interslice function that relates the
+            normal interslice forces and the parameter lambda to obtain the
+            shear interslice forces. ``halfsine`` is the default value and
+            corresponds to Morgenstern and Price method, but a
+            constant number may be input, for example ``interSlcFunc=1``,
+            corresponds to Spencer method.
+        maxLambda (`float`): Maximum value the lambda parameter can get.
+            ``0.6`` is the default value.
+        nLambda (`float`): Number of value the lambda parameter can get from
+            zero to ``maxLambda``. ``6`` is the default value.
 
+slices, seedFS=1, Kh=0, maxIter=50, tol=1e-3,
+                 interSlcFunc='halfsine', maxLambda=0.6, nLambda=6
     Note:
         The class ``Slices`` requires
         `numpy <http://www.numpy.org/>`_, `scipy <https://www.scipy.org/>`_,
@@ -68,7 +80,7 @@ class SlopeStabl:
         """
 
     def __init__(self, slices, seedFS=1, Kh=0, maxIter=50, tol=1e-3,
-                 interSlcFunc='halfsine', maxLambda=0.6):
+                 interSlcFunc='halfsine', maxLambda=0.6, nLambda=6):
         '''
         SlopeStabl(slices, seedFS=1, Kh=0, maxIter=50, tol=1e-3,
                    interSlcFunc='halfsine', maxLambda=0.6)
@@ -84,6 +96,7 @@ class SlopeStabl:
         self.forceFS = list()
         self.forceFStolerance = list()
         self.maxLambda = maxLambda
+        self.nLambda = nLambda
         # Setting the values of the interslice force function
         self.intersliceForceFunct()
         # Calculating the arms for the moments
@@ -584,7 +597,7 @@ class SlopeStabl:
         from numpy.polynomial.polynomial import polyfit
         import numpy as np
 
-        self.lambda_ = list(np.linspace(0, self.maxLambda, 10))
+        self.lambda_ = list(np.linspace(0, self.maxLambda, self.nLambda))
         self.momentFS, self.forceFS = list(), list()
         # Getting the factors of safety with rescpect to the moments
         self.getFm(self.seedFS, lambda_=0)  # First iteration
@@ -605,31 +618,36 @@ class SlopeStabl:
             self.calculateNormalForce(self.forceFS[-1])
 
         # Adjustment to a second-order polygon
-        x = np.linspace(self.lambda_[0], self.lambda_[-1], 100)
-        Am, Bm, Cm = polyfit(self.lambda_, self.momentFS, deg=2)
-        yMomentAdjust = Am + Bm * x + Cm * x ** 2
-        Af, Bf, Cf = polyfit(self.lambda_, self.forceFS, deg=2)
-        yForceAdjust = Af + Bf * x + Cf * x ** 2
-        setattr(self, 'adjustment', (x, yMomentAdjust, yForceAdjust))
+        def polyfit2fs():
+            x = np.linspace(self.lambda_[0], max(self.lambda_), 100)
+            Am, Bm, Cm = polyfit(self.lambda_, self.momentFS, deg=2)
+            yMomentAdjust = Am + Bm * x + Cm * x ** 2
+            Af, Bf, Cf = polyfit(self.lambda_, self.forceFS, deg=2)
+            yForceAdjust = Af + Bf * x + Cf * x ** 2
+            setattr(self, 'adjustment', (x, yMomentAdjust, yForceAdjust))
 
-        # Finding the intersection of both adjustments
-        def f(x):
-            polyn = (Am-Af) + (Bm-Bf) * x + (Cm-Cf) * x ** 2
-            return (polyn)
-        try:  # If every thing is ok, find the intersection of both adjustments
-            root = bisect(f, self.lambda_[0], self.lambda_[-1])
-            fs = Am + Bm * root + Cm * root ** 2
-            setattr(self, 'FS', {'fs': round(fs, 3), 'lambda': round(root, 3)})
+            # Finding the intersection of both adjustments
+            def f(x):
+                polyn = (Am-Af) + (Bm-Bf) * x + (Cm-Cf) * x ** 2
+                return (polyn)
+            try:  # If it exists, find the intersection of both adjustments
+                root = bisect(f, self.lambda_[0], max(self.lambda_))
+                fs = Am + Bm * root + Cm * root ** 2
+                setattr(self, 'FS', {'fs': fs, 'lambda': root})
+            except Exception:  # Else, do not print anything.
+                root = None
+                fs = None
+                setattr(self, 'FS', {'fs': None, 'lambda': None})
+            return fs, root
 
-            # Doing the math for the FS with lambda_=root
+        # Doing the math for the FS with lambda_=root
+        fs, root = polyfit2fs()
+        if root is not None:
             self.lambda_.append(root)
             self.getFf(fs, root)
             self.getFm(fs, root)
-        except Exception:  # Else, do not print anything.
-            root = None
-            fs = None
-            setattr(self, 'FS', {'fs': None, 'lambda': None})
-        return self.FS
+            fs, root = polyfit2fs()
+        return fs
 
     def plot(self):
         '''Method for generating a graphic of the slope stability analysis,
@@ -809,9 +827,9 @@ class SlopeStabl:
         if self.FS['lambda'] is not None:
             legend2 = plt.legend(
                 [lines[i] for i in [4]],
-                ['$f_\\mathrm{s}=' + str(self.FS['fs']) + '$' +
-                 '\n$\\lambda=' + str(self.FS['lambda'])+'$'], framealpha=0.25,
-                fontsize='small', loc=8)
+                ['$f_\\mathrm{s}=' + str(round(self.FS['fs'], 3)) + '$' +
+                 '\n$\\lambda=' + str(round(self.FS['lambda'], 3))+'$'],
+                framealpha=0.25, fontsize='small', loc=8)
             ax2.add_artist(legend2)
         fig.tight_layout()
         return fig
