@@ -413,17 +413,15 @@ class Slices:
         self.watertabCoords = watertabCoords
         self.bim = bim
         # Defining the structure of the water table
-        self.getRotPt()
+        self.fitCircle()
         self.createSlices()
         self.setExtLoads()
 
-    def getRotPt(self):
-        '''Method for defining the structure of all the slices in which the
-        soil mass above the slip surface is divided.
+    def fitCircle(self):
+        '''Method for adjusting a circumference to a cloud of points.
 
         Returns:
-            (`list`): List of object instanced from the class ``SliceStr``\
-                 that defines the structure of an individual slice.
+            (`dict`): Dictionary with the radius and coordinates of center.
 
         Examples:
             >>> from numpy import array
@@ -441,13 +439,15 @@ class Slices:
             >>>     material=material, slipSurfCoords=surface.coords,
             >>>     slopeCoords=slope.coords, numSlices=10,
             >>>     watertabCoords=None, bim=None)
-            >>> slices.getRotPt()
-            array([ 10.88132286,  10.83174439])
-            >>> surface.center
-            (10.881322862689261, 10.831744386868543)
+            >>> slices.fitCircle()
+            {'center': array([10.88132286, 10.83174439]),
+             'radius': 9.000000000000002,
+             'dist1': 2.009892716098348,
+             'dist2': 11.761811095385543}
         '''
         import numpy as np
         from scipy import optimize
+        from shapely.geometry import LineString, Point
 
         x, y = self.slipSurfCoords
 
@@ -464,7 +464,22 @@ class Slices:
         estimatedCenter = 3 * np.mean(self.slipSurfCoords, 1)
         center, __ = optimize.leastsq(f_2, estimatedCenter)
         setattr(self, 'rotationPt', center)
-        return center
+        allRadius = radius(*center)
+        meanRadius = allRadius.mean()  # radius of fitted circle
+        # Create the circle:
+        centerPt = Point(*center)
+        circleLs = centerPt.buffer(meanRadius).boundary
+        # Creating the terrain surface and the intersection with circleLs
+        terrainSurfLS = LineString(self.slopeCoords[:, 1:-2].T)
+        intersections = circleLs.intersection(terrainSurfLS)
+        if intersections.geom_type == 'MultiPoint':
+            dist1, dist2 = intersections[0].x, intersections[-1].x
+        else:
+            dist1, dist2 = x.min(), x.max()
+        fittedCirc = {'center': center, 'radius': meanRadius,
+                      'dist1': dist1, 'dist2': dist2}
+        setattr(self, 'fittedCirc', fittedCirc)
+        return fittedCirc
 
     def createSlices(self):
         '''Method for defining the structure of all the slices in which the
@@ -505,8 +520,8 @@ class Slices:
         from pybimstab.tools import getPointAtX, extractSegment
 
         # Defining horizontal coordinates of the boundaries between slices
-        maxHztSlipDist = self.slipSurfCoords[0].max()
-        minHztSlipDist = self.slipSurfCoords[0].min()
+        maxHztSlipDist = self.slipSurfCoords[0, -1]
+        minHztSlipDist = self.slipSurfCoords[0, 0]
         xCoords = np.linspace(minHztSlipDist, maxHztSlipDist, self.numSlices+1)
         if self.bim is not None:
             sliceWidth = (maxHztSlipDist - minHztSlipDist) / self.numSlices
@@ -592,14 +607,9 @@ class Slices:
             >>>     material=material, slipSurfCoords=surface.coords,
             >>>     slopeCoords=slope.coords, numSlices=10,
             >>>     watertabCoords=None, bim=None)
-            >>> slices.slices[0].__dict__.keys()
-            dict_keys(['material', 'terrainLS', 'slipSurfLS', 'watertabLS',
-                       'bim', 'terrainCoords', 'slipSurfCoords',
-                       'watertabCoords', 'sliceLS', 'coords', 'xMin', 'xMax',
-                       'yMin', 'yMax', 'area', 'width', 'baseSlope', 'alpha',
-                       'baseLength', 'l', 'topLength', 'topSlope',
-                       'topInclinatDeg', 'midHeight', 'midWatTabHeight',
-                       'extL', 'w'])
+            >>> slices.setExtLoads(extL=[{'load': 200, 'angle': 30}])
+            >>> slices.slices[0].extL, slices.slices[0].w
+            (200, 30)
         '''
         # Setting the external loads to each slice as a new attribute
         for i in range(self.numSlices):
@@ -612,7 +622,7 @@ class Slices:
                 slice_.w = extL[i]['angle']
         return
 
-    def plot(self):
+    def plot(self, plotFittedCirc=False):
         '''Method for generating a graphic of the slope stability model when is
         possible to watch the slices in the soil mass above the slip surface.
 
@@ -646,7 +656,7 @@ class Slices:
                 :download:`example script<../examples/figuresScripts/slices_Slices_example1.py>`.
 
             >>> from numpy import array
-            >>> from slope import NaturalSlope
+            >>> from pybimstab.slope import NaturalSlope
             >>> from pybimstab.watertable import WaterTable
             >>> from pybimstab.bim import BlocksInMatrix
             >>> from pybimstab.slipsurface import CircularSurface
@@ -690,6 +700,7 @@ class Slices:
         import numpy as np
         from matplotlib import pyplot as plt
         from matplotlib.colors import LinearSegmentedColormap as newcmap
+        from pybimstab.slipsurface import CircularSurface
 
         # Variables to control the color map and its legend
         if self.bim is not None:
@@ -712,6 +723,12 @@ class Slices:
             bar = plt.colorbar(bar, ax=ax, ticks=ticks, pad=0.05,
                                shrink=0.15, aspect=3)
             bar.ax.set_yticklabels(ticksLabels, fontsize='small')
+        if plotFittedCirc:
+            circSurf = CircularSurface(slopeCoords=self.slopeCoords,
+                                       dist1=self.fittedCirc['dist1'],
+                                       dist2=self.fittedCirc['dist2'],
+                                       radius=self.fittedCirc['radius'])
+            ax.plot(*circSurf.coords, ':r', label='Fitted cir. surf.')
         for slice_ in self.slices:
             ax.plot(slice_.coords[0], slice_.coords[1], ':r', lw=0.5)
         ax.plot(self.slipSurfCoords[0], self.slipSurfCoords[1], '-r',

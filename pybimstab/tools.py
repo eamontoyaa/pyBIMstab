@@ -11,6 +11,33 @@ import numpy as np
 from shapely.geometry import LineString, Point
 
 
+def getIntersect(x, y1, y2):
+    '''Intersects two lines that have the same abscise points
+
+    Args:
+        x (`list` or `tuple`): abscises of both lines
+        y1 (`list` or `tuple`): ordinates of first line
+        y2 (`list` or `tuple`): ordinates of second line
+
+    Returns:
+        (`tuple`): Coordinates of the interesection point
+
+    Examples:
+        >>> from pybimstab.tools import getIntersect
+        >>> getIntersect(x=[0, 1], y1=[0, 0], y2=[1, -1])
+        (0.5, 0.0)
+    '''
+    l1 = LineString(np.array([x, y1]).T)
+    l2 = LineString(np.array([x, y2]).T)
+    try:
+        pt = l1.intersection(l2)
+        if pt.type != 'Point':
+            return None
+        else:
+            return pt.x, pt.y
+    except Exception:
+        return None
+
 def cutLine(line, distance):
     '''Cuts a line in two parts at a distance measured from its starting point.
 

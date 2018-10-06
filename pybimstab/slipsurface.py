@@ -64,6 +64,8 @@ class CircularSurface:
         self.slopeCoords = slopeCoords
         self.dist1 = min(dist1, dist2)
         self.dist2 = max(dist1, dist2)
+        if self.dist2 > max(slopeCoords[0]):
+            self.dist2 = max(slopeCoords[0])
         self.radius = radius
         self.concave = concave
         # Definde structure of the arc
@@ -326,8 +328,8 @@ class TortuousSurface:
         >>> surface.__dict__.keys()
         dict_keys(['bim', 'dist1', 'dist2', 'heuristic', 'reverseLeft',
                    'reverseUp', 'smoothFactor', 'preferredPath',
-                   'prefPathFact', 'terrainSurfLS', 'point1', 'point2',
-                   'startIdx', 'goalIdx', 'coords'])
+                   'prefPathFact', 'terrainSurfLS', 'point1', 'end1', 'point2',
+                   'end2', 'startIdx', 'goalIdx', 'coords'])
     '''
     def __init__(self, bim, dist1, dist2, heuristic='manhattan',
                  reverseLeft=False, reverseUp=False, smoothFactor=0,
@@ -340,6 +342,8 @@ class TortuousSurface:
         self.bim = bim
         self.dist1 = min(dist1, dist2)
         self.dist2 = max(dist1, dist2)
+        if self.dist2 > max(bim.slopeCoords[0]):
+            self.dist2 = max(bim.slopeCoords[0])
         self.heuristic = heuristic
         self.reverseLeft = reverseLeft
         self.reverseUp = reverseUp
@@ -350,6 +354,13 @@ class TortuousSurface:
         self.prefPathFact = prefPathFact
         # Obtain the indexes at the ends of the slip surface
         self.getIndexesAtEnds()
+        # Moving the indexes of the ends when are blocks
+        if self.bim.grid[self.startIdx] == 1:
+            self.dist1 += self.bim.tileSize
+            self.getIndexesAtEnds()
+        if self.bim.grid[self.goalIdx] == 1:
+            self.dist2 = self.dist2 - self.bim.tileSize
+            self.getIndexesAtEnds()
         # Obtain the optimum path through the A* algorithm
         self.defineStructre()
 
@@ -451,31 +462,32 @@ class TortuousSurface:
             self.bim.slopeCoords = np.fliplr(self.bim.slopeCoords)
         terrainSurfLS = LineString(self.bim.slopeCoords[:, 1:-2].T)
         setattr(self, 'terrainSurfLS', terrainSurfLS)
-        yMin = self.bim.slopeCoords[1].min()/2
-        yMax = self.bim.slopeCoords[1].max()*2
+        yMin = self.bim.slopeCoords[1].min() / 2
+        yMax = self.bim.slopeCoords[1].max() * 2
+        tileSize = self.bim.tileSize
         for name, dist in [('point1', self.dist1),
-                           ('point2', self.dist2)]:
+                           ('end1', self.dist1 - (self.dist1 % tileSize)),
+                           ('point2', self.dist2),
+                           ('end2', self.dist2 - (self.dist2 % tileSize) +
+                            tileSize)]:
             vertLine = LineString([(dist, yMin), (dist, yMax)])
             intersection = terrainSurfLS.intersection(vertLine)
             setattr(self, name, np.array([intersection.x, intersection.y]))
         # Indexes of the start and goal nodes
         startIdx = self.getIndexes(self.point1)
+        try:  # Controling when index is out the grid dimension
+            self.bim.grid[startIdx]
+        except Exception:
+            startIdx = (startIdx[0]-1, startIdx[1])
         goalIdx = self.getIndexes(self.point2)
 
-        # Moving the indexes of the ends if are invaid nodes
-        while self.bim.grid[startIdx] != 0 or self.bim.grid[goalIdx] != 0:
+        # Moving the indexes of the ends when are out the slope
+        while self.bim.grid[startIdx] == -1 or self.bim.grid[goalIdx] == -1:
             # Start index
             if self.bim.grid[startIdx] == -1:
                 startIdx = (startIdx[0]-1, startIdx[1])
-            if self.bim.grid[startIdx] == 1:
-                self.dist1 += self.bim.tileSize
-                startIdx = (startIdx[0], startIdx[1]+1)
-            # Goal index
             if self.bim.grid[goalIdx] == -1:
                 goalIdx = (goalIdx[0]-1, goalIdx[1])
-            if self.bim.grid[goalIdx] == 1:
-                self.dist1 += self.bim.tileSize
-                goalIdx = (goalIdx[0], goalIdx[1]+1)
         setattr(self, 'startIdx', startIdx)
         setattr(self, 'goalIdx', goalIdx)
 
@@ -513,21 +525,18 @@ class TortuousSurface:
             prefPathAstar = PreferredPath(preferredPathIdx, self.prefPathFact)
         else:
             prefPathAstar = None
-        astar = Astar(grid=self.bim.grid, startNode=self.startIdx,
-                      goalNode=self.goalIdx, heuristic=self.heuristic,
-                      reverseLeft=self.reverseLeft, reverseUp=self.reverseUp,
-                      preferredPath=prefPathAstar)
+        astar = Astar(
+            grid=self.bim.grid, startNode=self.startIdx,
+            goalNode=self.goalIdx, heuristic=self.heuristic,
+            reverseLeft=self.reverseLeft, reverseUp=self.reverseUp,
+            preferredPath=prefPathAstar)
 
         # Transform the optimum path indexes to real-scale coordinates
         coords = [self.getCoord(tuple(idx)) for idx in astar.optimumPath.T]
 
         # Appendinding the ends to the path
-        while coords[-1][0] < self.point1[0]:
-            coords.pop()  # deleting points at the start to avoid concavities
-        coords.append(list(self.point1))  # appending the initial point
-        while coords[0][0] > self.point2[0]:
-            coords.pop(0)  # deleting points at the end to avoid concavities
-        coords.insert(0, list(self.point2))  # appending the ending point
+        coords.append(self.end1)
+        coords.insert(0, self.end2)
 
         # Sorting the path such that the begining is in the left side
         coords = np.fliplr(np.array(coords).T)

@@ -74,16 +74,18 @@ slices, seedFS=1, Kh=0, maxIter=50, tol=1e-3,
         >>> stabAnalysis = SlopeStabl(slices, seedFS=1, Kh=0)
         >>> stabAnalysis.__dict__.keys()
         dict_keys(['slices', 'Kh', 'seedFS', 'maxIter', 'tol', 'interSlcFunc',
-                   'momentFS', 'momentFStolerance', 'forceFS',
-                   'forceFStolerance', 'maxLambda', 'lambda_', 'adjustment',
-                   'FS'])
+                   'minLambda', 'maxLambda', 'nLambda', 'fsBishop',
+                   'fsFellenius', 'fsMoment', 'fsForces', 'lambda_',
+                   'adjustment', 'FS'])
         """
 
     def __init__(self, slices, seedFS=1, Kh=0, maxIter=50, tol=1e-3,
-                 interSlcFunc='halfsine', maxLambda=0.6, nLambda=6):
+                 interSlcFunc='halfsine', minLambda=-0.6, maxLambda=0.6,
+                 nLambda=10):
         '''
         SlopeStabl(slices, seedFS=1, Kh=0, maxIter=50, tol=1e-3,
-                   interSlcFunc='halfsine', maxLambda=0.6)
+                   interSlcFunc='halfsine', minLambda=-0.6, maxLambda=0.6,
+                   nLambda=10)
         '''
         self.slices = slices
         self.Kh = Kh
@@ -91,10 +93,7 @@ slices, seedFS=1, Kh=0, maxIter=50, tol=1e-3,
         self.maxIter = maxIter
         self.tol = tol
         self.interSlcFunc = interSlcFunc
-        self.momentFS = list()
-        self.momentFStolerance = list()
-        self.forceFS = list()
-        self.forceFStolerance = list()
+        self.minLambda = minLambda
         self.maxLambda = maxLambda
         self.nLambda = nLambda
         # Setting the values of the interslice force function
@@ -189,18 +188,19 @@ slices, seedFS=1, Kh=0, maxIter=50, tol=1e-3,
         from numpy import radians as rad
         from shapely.geometry import LineString
 
-        for slice_ in self.slices.slices:
+        for n, slice_ in enumerate(self.slices.slices):
+            setattr(slice_, 'n', n)
             # Vertical linestring that splits the slice through the cetroid
             xMean = (slice_.xMin + slice_.xMax) / 2
             vertLine = LineString([(xMean, -self.slices.rotationPt[1]),
                                    (xMean, self.slices.rotationPt[1])])
 
             # Arms for external loads
-            loadPt = np.array(slice_.terrainLS.intersection(vertLine))
-            theta = np.arctan((self.slices.rotationPt[1] - loadPt[1]) /
-                              (self.slices.rotationPt[0] - loadPt[0])) % np.pi
+            loadPt1 = np.array(slice_.terrainLS.intersection(vertLine))
+            theta = np.arctan((self.slices.rotationPt[1] - loadPt1[1]) /
+                              (self.slices.rotationPt[0] - loadPt1[0])) % np.pi
             alpha = abs(rad(slice_.w) - theta)
-            loadPt2RotPt = np.linalg.norm(self.slices.rotationPt - loadPt)
+            loadPt2RotPt = np.linalg.norm(self.slices.rotationPt - loadPt1)
             proy = loadPt2RotPt * abs(np.cos(alpha))
             d = (loadPt2RotPt ** 2 - proy ** 2) ** 0.5
             if rad(slice_.w) < theta:
@@ -208,11 +208,14 @@ slices, seedFS=1, Kh=0, maxIter=50, tol=1e-3,
             setattr(slice_, 'd', d)
 
             # Arms for normal loads at the base
-            loadPt = np.array(slice_.slipSurfLS.intersection(vertLine))
-            theta = np.arctan((self.slices.rotationPt[1] - loadPt[1]) /
-                              (self.slices.rotationPt[0] - loadPt[0])) % np.pi
+            loadPt2 = slice_.slipSurfLS.intersection(vertLine)
+            if loadPt2.type is not 'Point':
+                loadPt2 = [xMean, loadPt1[1] - slice_.midHeight]
+            loadPt2 = np.array(loadPt2)
+            theta = np.arctan((self.slices.rotationPt[1] - loadPt2[1]) /
+                              (self.slices.rotationPt[0] - loadPt2[0])) % np.pi
             alpha = abs(0.5*np.pi - rad(slice_.alpha) - theta)
-            loadPt2RotPt = np.linalg.norm(self.slices.rotationPt - loadPt)
+            loadPt2RotPt = np.linalg.norm(self.slices.rotationPt - loadPt2)
             proy = loadPt2RotPt * abs(np.cos(alpha))
             f = (loadPt2RotPt ** 2 - proy ** 2) ** 0.5
             if 0.5*np.pi - rad(slice_.alpha) < theta:
@@ -221,7 +224,7 @@ slices, seedFS=1, Kh=0, maxIter=50, tol=1e-3,
             setattr(slice_, 'R', proy)  # Arm for the mobilized shear force
 
             # Arms for horizontal seismic force
-            e = self.slices.rotationPt[1] - (loadPt[1] + 0.5*slice_.midHeight)
+            e = self.slices.rotationPt[1] - (loadPt2[1] + 0.5*slice_.midHeight)
             setattr(slice_, 'e', e)
 
             # Arms for the weight of the slice
@@ -298,8 +301,8 @@ slices, seedFS=1, Kh=0, maxIter=50, tol=1e-3,
             >>>     slopeCoords=slope.coords, numSlices=5)
             >>> stabAnalysis = SlopeStabl(slices, seedFS=1, Kh=0)
             >>> stabAnalysis.calculateNormalForce(stabAnalysis.FS['fs'])
-            [44807.424385481514, 68016.796036795888, 70725.499328607926,
-             57640.486009567263, 22847.573061951796]
+            [45009.409630951726, 68299.77910530512, 70721.13554871723,
+             57346.7578530581, 22706.444365285253]
         '''
         from numpy import sin, cos, tan
         from numpy import radians as rad
@@ -309,6 +312,8 @@ slices, seedFS=1, Kh=0, maxIter=50, tol=1e-3,
             # Calculating the normal force 'P' at the base of the slice_.
             c = slice_.material.cohesion
             phi = rad(slice_.material.frictAngle)
+            if seedFS == 0:
+                seedFS = 1
             mAlpha = cos(rad(slice_.alpha)) + sin(rad(slice_.alpha)) * \
                 sin(rad(slice_.material.frictAngle)) / seedFS
             P = (slice_.weight + slice_.Xr - slice_.Xl -
@@ -342,11 +347,9 @@ slices, seedFS=1, Kh=0, maxIter=50, tol=1e-3,
                 reached and the number of the iteration.
 
         Examples:
-            >>> from numpy import array
-            >>> import matplotlib.pyplot as plt
+            >>> # Example Case 1 - Fig. 9 (Fredlund & Krahn, 1977)
             >>> from pybimstab.slope import AnthropicSlope
             >>> from pybimstab.slipsurface import CircularSurface
-            >>> from pybimstab.watertable import WaterTable
             >>> from pybimstab.slices import MaterialParameters, Slices
             >>> from pybimstab.slopestabl import SlopeStabl
             >>> slope = AnthropicSlope(slopeHeight=40, slopeDip=[2, 1],
@@ -359,11 +362,13 @@ slices, seedFS=1, Kh=0, maxIter=50, tol=1e-3,
             >>>                               wtUnitWeight=62.4)
             >>> slices = Slices(
             >>>     material=material, slipSurfCoords=surface.coords,
-            >>>     slopeCoords=slope.coords, numSlices=30)
-            >>> stabAnalysis = SlopeStabl(slices, seedFS=1, Kh=0)
+            >>>     slopeCoords=slope.coords, numSlices=50,
+            >>>     watertabCoords=None, bim=None)
+            >>> stabAnalysis = SlopeStabl(slices, seedFS=1, Kh=0, minLambda=0,
+            >>>                           interSlcFunc=1, nLambda=10)
             >>> stabAnalysis.getFm(stabAnalysis.FS['fs'],
             >>>                    stabAnalysis.FS['lambda'])
-            {'fs': 2.0725131242553996, 'toleraceReached': (True, 11)}
+            (2.0750390044795854, True)
         '''
         from numpy import tan
         from numpy import radians as rad
@@ -393,13 +398,10 @@ slices, seedFS=1, Kh=0, maxIter=50, tol=1e-3,
             self.intersliceForces(fs[-1], lambda_)
 
             # Verifying if the tolerance is reached
-            deltaFs = abs(fs[-1] - fs[-2])
-            if deltaFs <= self.tol and i > 10:
+            if i > 5 and all((fs[-1] - fs[-2], fs[-2] - fs[-3])) <= self.tol:
                 toleraceReached = True
                 break
-        self.momentFS.append(fs[-1])
-        self.momentFStolerance.append((toleraceReached, i))
-        return {'fs': fs[-1], 'toleraceReached': (toleraceReached, i)}
+        return fs[-1], toleraceReached
 
     def getFf(self, seedFS, lambda_=0):
         '''
@@ -424,11 +426,9 @@ slices, seedFS=1, Kh=0, maxIter=50, tol=1e-3,
                 reached and the number of the iteration.
 
         Examples:
-            >>> from numpy import array
-            >>> import matplotlib.pyplot as plt
+            >>> # Example Case 1 - Fig. 9 (Fredlund & Krahn, 1977)
             >>> from pybimstab.slope import AnthropicSlope
             >>> from pybimstab.slipsurface import CircularSurface
-            >>> from pybimstab.watertable import WaterTable
             >>> from pybimstab.slices import MaterialParameters, Slices
             >>> from pybimstab.slopestabl import SlopeStabl
             >>> slope = AnthropicSlope(slopeHeight=40, slopeDip=[2, 1],
@@ -441,11 +441,13 @@ slices, seedFS=1, Kh=0, maxIter=50, tol=1e-3,
             >>>                               wtUnitWeight=62.4)
             >>> slices = Slices(
             >>>     material=material, slipSurfCoords=surface.coords,
-            >>>     slopeCoords=slope.coords, numSlices=30)
-            >>> stabAnalysis = SlopeStabl(slices, seedFS=1, Kh=0)
+            >>>     slopeCoords=slope.coords, numSlices=50,
+            >>>     watertabCoords=None, bim=None)
+            >>> stabAnalysis = SlopeStabl(slices, seedFS=1, Kh=0, minLambda=0,
+            >>>                           interSlcFunc=1, nLambda=10)
             >>> stabAnalysis.getFf(stabAnalysis.FS['fs'],
             >>>                    stabAnalysis.FS['lambda'])
-            {'fs': 2.0726381466028041, 'toleraceReached': (True, 11)}
+            (2.0741545445738296, True)
         '''
         from numpy import tan, cos, sin
         from numpy import radians as rad
@@ -474,13 +476,10 @@ slices, seedFS=1, Kh=0, maxIter=50, tol=1e-3,
             self.intersliceForces(fs[-1], lambda_)
 
             # Verifying if the tolerance is reached
-            deltaFs = abs(fs[-1] - fs[-2])
-            if deltaFs <= self.tol and i > 10:
+            if i > 5 and all((fs[-1] - fs[-2], fs[-2] - fs[-3])) <= self.tol:
                 toleraceReached = True
                 break
-        self.forceFS.append(fs[-1])
-        self.forceFStolerance.append((toleraceReached, i))
-        return {'fs': fs[-1], 'toleraceReached': (toleraceReached, i)}
+        return fs[-1], toleraceReached
 
     def intersliceForces(self, seedFS, lambda_):
         '''
@@ -529,8 +528,10 @@ slices, seedFS=1, Kh=0, maxIter=50, tol=1e-3,
             >>> stabAnalysis = SlopeStabl(slices, seedFS=1, Kh=0)
             >>> stabAnalysis.intersliceForces(stabAnalysis.FS['fs'],
             >>>                               stabAnalysis.FS['lambda'])
-            ([0, -24548.8070, -42059.4754, -38969.9554, -18430.1500, -15.8869],
-             [0, -5540.8999, -15360.3602, -14232.0499, -4159.8606, -7.471e-16])
+            ([0, -24561.260979675248, -42085.32887504204, -38993.844201424305,
+              -18464.723052348225, -61.4153504520018],
+             [0, -5511.202498703704, -15279.673506543182, -14157.266298947989,
+              -4143.22489013017, -2.8712090198929304e-15])
         '''
         from numpy import tan, cos, sin
         from numpy import radians as rad
@@ -588,66 +589,88 @@ slices, seedFS=1, Kh=0, maxIter=50, tol=1e-3,
             >>>                               wtUnitWeight=62.4)
             >>> slices = Slices(
             >>>     material=material, slipSurfCoords=surface.coords,
-            >>>     slopeCoords=slope.coords, numSlices=50)
+            >>>     slopeCoords=slope.coords, numSlices=5)
+
             >>> stabAnalysis = SlopeStabl(slices, seedFS=1, Kh=0)
             >>> stabAnalysis.iterateGLE()
-            {'fs': 2.075, 'lambda': 0.345}
+            {'fs': 2.0258090954552275, 'lambda': 0.38174822248691215}
+
+            >>> stabAnalysis = SlopeStabl(slices, seedFS=1, Kh=0, nLambda=0)
+            >>> stabAnalysis.iterateGLE()
+            {'fsBishop': 2.0267026043637175, 'fsFellenius': 1.770864711650081}
         '''
-        from scipy.optimize import bisect
-        from numpy.polynomial.polynomial import polyfit
         import numpy as np
+        from pybimstab.tools import getIntersect
+        from pybimstab.smoothcurve import SmoothCurve
 
-        self.lambda_ = list(np.linspace(0, self.maxLambda, self.nLambda))
-        self.momentFS, self.forceFS = list(), list()
-        # Getting the factors of safety with rescpect to the moments
-        self.getFm(self.seedFS, lambda_=0)  # First iteration
-        for lambda_ in self.lambda_[1:]:  # Next iterations
-            self.getFm(self.momentFS[-1], lambda_)
-            self.intersliceForces(self.momentFS[-1], lambda_)
-            self.calculateNormalForce(self.momentFS[-1])
+        if self.nLambda > 0:
+            # Getting the values of lambda to iterate GLE
+            lambdaVal = np.unique(list(np.linspace(
+                    self.minLambda, self.maxLambda, self.nLambda)) + [0])
 
-        # Setting the interslice shear forces equal to zero
-        for slice_ in self.slices.slices:
-            slice_.Er, slice_.El, slice_.Xr, slice_.Xl = 0, 0, 0, 0
+            # Iteration for moments
+            fsBishop, tol = self.getFm(self.seedFS, lambda_=0)  # Moment equil.
+            setattr(self, 'fsBishop', fsBishop)
+            fsMoment, tolM = [fsBishop], list()
+            for lambda_ in lambdaVal:
+                fsM, tol = self.getFm(fsMoment[-1], lambda_)
+                if max(fsM, fsMoment[-1]) / min(fsM, fsMoment[-1]) > 1.5:
+                    tol = False
+                fsMoment.append(fsM)
+                tolM.append(tol)
+                self.intersliceForces(fsMoment[-1], lambda_)
+                self.calculateNormalForce(fsMoment[-1])
+            fsMoment.pop(0)
 
-        # Getting the factors of safety with rescpect to the moments
-        self.getFf(self.seedFS, lambda_=0)  # First iteration
-        for lambda_ in self.lambda_[1:]:  # Next iterations
-            self.getFf(self.forceFS[-1], lambda_)
-            self.intersliceForces(self.forceFS[-1], lambda_)
-            self.calculateNormalForce(self.forceFS[-1])
+            for slice_ in self.slices.slices:
+                    slice_.Er, slice_.El, slice_.Xr, slice_.Xl = 0, 0, 0, 0
 
-        # Adjustment to a second-order polygon
-        def polyfit2fs():
-            x = np.linspace(self.lambda_[0], max(self.lambda_), 100)
-            Am, Bm, Cm = polyfit(self.lambda_, self.momentFS, deg=2)
-            yMomentAdjust = Am + Bm * x + Cm * x ** 2
-            Af, Bf, Cf = polyfit(self.lambda_, self.forceFS, deg=2)
-            yForceAdjust = Af + Bf * x + Cf * x ** 2
-            setattr(self, 'adjustment', (x, yMomentAdjust, yForceAdjust))
+            # Iteration for forces
+            fsFellenius, tol = self.getFf(self.seedFS, lambda_=0)  # Force eq.
+            setattr(self, 'fsFellenius', fsFellenius)
+            fsForces, tolF = [fsFellenius], list()
+            for lambda_ in lambdaVal:
+                fsF, tol = self.getFf(fsForces[-1], lambda_)
+                if max(fsF, fsForces[-1]) / min(fsF, fsForces[-1]) > 1.5:
+                    tol = False
+                fsForces.append(fsF)
+                tolF.append(tol)
+                self.intersliceForces(fsMoment[-1], lambda_)
+                self.calculateNormalForce(fsMoment[-1])
+            fsForces.pop(0)
 
-            # Finding the intersection of both adjustments
-            def f(x):
-                polyn = (Am-Af) + (Bm-Bf) * x + (Cm-Cf) * x ** 2
-                return (polyn)
-            try:  # If it exists, find the intersection of both adjustments
-                root = bisect(f, self.lambda_[0], max(self.lambda_))
-                fs = Am + Bm * root + Cm * root ** 2
-                setattr(self, 'FS', {'fs': fs, 'lambda': root})
-            except Exception:  # Else, do not print anything.
-                root = None
-                fs = None
+            # Creating the attributes
+            idx2interp = np.where(tolM and tolF)
+            setattr(self, 'fsMoment', list(np.array(fsMoment)[idx2interp]))
+            setattr(self, 'fsForces', list(np.array(fsForces)[idx2interp]))
+            setattr(self, 'lambda_', list(np.array(lambdaVal)[idx2interp]))
+
+            # Get intersection of factors of safety
+            momentLine = SmoothCurve(
+                    x=self.lambda_, y=self.fsMoment, k=3, n=100)
+            forcesLine = SmoothCurve(
+                    x=self.lambda_, y=self.fsForces, k=3, n=100)
+            x, momentsY = momentLine.smoothing
+            forcesY = forcesLine.smoothing[1]
+            setattr(self, 'adjustment', (x, momentsY, forcesY))
+            intersect = getIntersect(x=x, y1=momentsY, y2=forcesY)
+            if intersect is None:
+                root, fs = None, None
                 setattr(self, 'FS', {'fs': None, 'lambda': None})
-            return fs, root
+            else:
+                root, fs = intersect
+                setattr(self, 'FS', {'fs': fs, 'lambda': root})
 
-        # Doing the math for the FS with lambda_=root
-        fs, root = polyfit2fs()
-        if root is not None:
-            self.lambda_.append(root)
-            self.getFf(fs, root)
-            self.getFm(fs, root)
-            fs, root = polyfit2fs()
-        return fs
+            # Slices forces when full equilibrium is found (lambda=root)
+            if fs is not None:
+                self.getFf(fs, root)
+            return {'fs': fs, 'lambda': root}
+        else:
+            fsBishop, tol = self.getFm(self.seedFS, lambda_=0)
+            setattr(self, 'fsBishop', fsBishop)
+            fsFellenius, tol = self.getFf(self.seedFS, lambda_=0)
+            setattr(self, 'fsFellenius', fsFellenius)
+            return {'fsBishop': fsBishop, 'fsFellenius': fsFellenius}
 
     def plot(self):
         '''Method for generating a graphic of the slope stability analysis,
@@ -675,8 +698,8 @@ slices, seedFS=1, Kh=0, maxIter=50, tol=1e-3,
             >>>     material=material, slipSurfCoords=surface.coords,
             >>>     slopeCoords=slope.coords, numSlices=50,
             >>>     watertabCoords=None, bim=None)
-            >>> stabAnalysis = SlopeStabl(slices, seedFS=1, Kh=0,
-            >>>                           interSlcFunc=1)
+            >>> stabAnalysis = SlopeStabl(slices, seedFS=1, Kh=0, minLambda=0,
+            >>>                           interSlcFunc=1, nLambda=10)
             >>> fig = stabAnalysis.plot()
 
             .. figure:: https://rawgit.com/eamontoyaa/pybimstab/master/examples/figures/slopestabl_example1.svg
@@ -708,7 +731,7 @@ slices, seedFS=1, Kh=0, maxIter=50, tol=1e-3,
             >>>     material=material, slipSurfCoords=surface.coords,
             >>>     slopeCoords=slope.coords, numSlices=50,
             >>>     watertabCoords=watertable.coords, bim=None)
-            >>> stabAnalysis = SlopeStabl(slices, seedFS=1, Kh=0)
+            >>> stabAnalysis = SlopeStabl(slices, seedFS=1, Kh=0, minLambda=0)
             >>> fig = stabAnalysis.plot()
 
             .. figure:: https://rawgit.com/eamontoyaa/pybimstab/master/examples/figures/slopestabl_example2.svg
@@ -725,6 +748,7 @@ slices, seedFS=1, Kh=0, maxIter=50, tol=1e-3,
             >>> from pybimstab.slipsurface import CircularSurface
             >>> from pybimstab.slipsurface import TortuousSurface
             >>> from pybimstab.slices import MaterialParameters, Slices
+            >>> from pybimstab.slopestabl import SlopeStabl
             >>> terrainCoords = array(
             >>>     [[-2.49, 0.1, 1.7, 3.89, 5.9, 8.12, 9.87, 13.29, 20.29,
             >>>       21.43, 22.28, 23.48, 24.65, 25.17],
@@ -741,7 +765,7 @@ slices, seedFS=1, Kh=0, maxIter=50, tol=1e-3,
             >>> preferredPath = CircularSurface(
             >>>     slopeCoords=slope.coords, dist1=5, dist2=15.78, radius=20)
             >>> surface = TortuousSurface(
-            >>>     bim, dist1=4, dist2=15.78, heuristic='euclidean',
+            >>>     bim, dist1=4, dist2=15.5, heuristic='euclidean',
             >>>     reverseLeft=False, reverseUp=False, smoothFactor=2,
             >>>     preferredPath=preferredPath.coords, prefPathFact=2)
             >>> material = MaterialParameters(
@@ -749,9 +773,10 @@ slices, seedFS=1, Kh=0, maxIter=50, tol=1e-3,
             >>>     blocksUnitWeight=21, wtUnitWeight=9.8)
             >>> slices = Slices(
             >>>     material=material, slipSurfCoords=surface.coords,
-            >>>     slopeCoords=slope.coords, numSlices=10,
+            >>>     slopeCoords=slope.coords, numSlices=20,
             >>>     watertabCoords=watertable.coords, bim=bim)
-            >>> stabAnalysis = SlopeStabl(slices, seedFS=1, Kh=0)
+            >>> stabAnalysis = SlopeStabl(slices, seedFS=1, Kh=0, nLambda=13,
+            >>>                           minLambda=0)
             >>> fig = stabAnalysis.plot()
 
             .. figure:: https://rawgit.com/eamontoyaa/pybimstab/master/examples/figures/slopestabl_example3.svg
@@ -778,10 +803,15 @@ slices, seedFS=1, Kh=0, maxIter=50, tol=1e-3,
                 ticks = [0.25, 0.75]
                 ticksLabels = ['Matrix', 'Blocks']
         # Plot body
-        fig = plt.figure(figsize=(6.4, 3.2))
-        gs = gridspec.GridSpec(1, 2, width_ratios=[1, 3])
-        ax1 = plt.subplot(gs[1])
-        ax2 = plt.subplot(gs[0])
+        if self.nLambda > 0:
+            fig = plt.figure(figsize=(9, 4.5))
+            gs = gridspec.GridSpec(1, 2, width_ratios=[1, 3])
+            ax1 = plt.subplot(gs[1])
+            ax2 = plt.subplot(gs[0])
+        else:
+            fig = plt.figure()
+            ax1 = fig.add_subplot(111)
+
         # # Subfigure 1
         if self.slices.bim is not None:
             bar = ax1.pcolormesh(
@@ -795,42 +825,49 @@ slices, seedFS=1, Kh=0, maxIter=50, tol=1e-3,
             ax1.plot(slice_.coords[0], slice_.coords[1], ':r', lw=0.5)
         ax1.plot(self.slices.slipSurfCoords[0], self.slices.slipSurfCoords[1],
                  '-r')
-        ax1.plot(*self.slices.rotationPt, '.r')
+        ax1.plot(*self.slices.rotationPt, '.r', label='$f_\\mathrm{B} = ' +
+                 str(round(self.fsBishop, 3)) + '$ \n$f_\\mathrm{F} = ' +
+                 str(round(self.fsFellenius, 3)) + '$')
         ax1.plot(self.slices.slopeCoords[0], self.slices.slopeCoords[1], '-k')
         if self.slices.watertabCoords is not None:
             ax1.plot(self.slices.watertabCoords[0],
                      self.slices.watertabCoords[1], 'deepskyblue', lw=0.9)
-        # # Subfigure 2
-        ax2.plot(self.adjustment[0], self.adjustment[1], '-k', lw=0.5)  # FSm
-        ax2.plot(self.lambda_, self.momentFS, 'sk', ms=2.5)
-        ax2.plot(self.adjustment[0], self.adjustment[2], '-k', lw=0.5)  # FSf
-        ax2.plot(self.lambda_, self.forceFS, 'ok', ms=2.5)
-        if self.FS['lambda'] is not None:
-            ax2.plot(self.FS['lambda'], self.FS['fs'], '*r', ms=5)
         # Plot settings
         ax1.grid(True, ls='--', lw=0.5)
         ax1.axis('equal')
-#        ax1.yaxis.tick_right()
         ax1.tick_params(labelsize='x-small')
-        ax2.tick_params(labelsize='x-small')
-#        ax2.yaxis.set_label_position('right')
-        ax2.grid(True, ls='--', lw=0.5)
-        ax2Ticks = np.arange(0, max(self.lambda_)+0.1, 0.2)
-        ax2.set_xticks(ax2Ticks)
-        ax2.set_ylabel('$f_\\mathrm{s}$')
-        ax2.set_xlabel('$\\lambda_a$')
-        lines = ax2.get_lines()
-        legend1 = plt.legend(
-            [lines[i] for i in [1, 3]], ['$f_\\mathrm{m}$', '$f_\\mathrm{f}$'],
-            loc=1, fontsize='small', mode='expand', ncol=2, framealpha=0.25)
-        ax2.add_artist(legend1)
-        if self.FS['lambda'] is not None:
-            legend2 = plt.legend(
-                [lines[i] for i in [4]],
-                ['$f_\\mathrm{s}=' + str(round(self.FS['fs'], 3)) + '$' +
-                 '\n$\\lambda=' + str(round(self.FS['lambda'], 3))+'$'],
-                framealpha=0.25, fontsize='small', loc=8)
-            ax2.add_artist(legend2)
+
+        # # Subfigure 2
+        if self.nLambda > 0:
+            ax2.plot(self.adjustment[0], self.adjustment[1], '-k', lw=0.5)
+            ax2.plot(self.lambda_, self.fsMoment, 'vk', ms=3.5)
+            ax2.plot(self.adjustment[0], self.adjustment[2], '-k', lw=0.5)
+            ax2.plot(self.lambda_, self.fsForces, 'ok', ms=3.5)
+            if self.FS['lambda'] is not None:
+                ax2.plot(self.FS['lambda'], self.FS['fs'], '*r', ms=7)
+            # Plot settings
+            ax2.tick_params(labelsize='x-small')
+            ax2.grid(True, ls='--', lw=0.5)
+            ax2Ticks = np.arange(round(min(self.lambda_), 1),
+                                 round(max(self.lambda_), 1) + 0.1, 0.3)
+            ax2.set_xticks(ax2Ticks)
+            ax2.set_ylabel('$f_\\mathrm{s}$')
+            ax2.set_xlabel('$\\lambda_a$')
+            lines = ax2.get_lines()
+            legend1 = plt.legend([lines[i] for i in [1, 3]],
+                                 ['$f_\\mathrm{m}$', '$f_\\mathrm{f}$'], loc=1,
+                                 fontsize='medium', mode='expand', ncol=2,
+                                 framealpha=0.25)
+            ax2.add_artist(legend1)
+            if self.FS['lambda'] is not None:
+                legend2 = plt.legend(
+                    [lines[i] for i in [4]],
+                    ['$f_\\mathrm{s}=' + str(round(self.FS['fs'], 3)) + '$' +
+                     '\n$\\lambda=' + str(round(self.FS['lambda'], 3))+'$'],
+                    framealpha=0.25, fontsize='medium', loc=8)
+                ax2.add_artist(legend2)
+        else:
+            plt.legend(loc=2, framealpha=0.25)
         fig.tight_layout()
         return fig
 

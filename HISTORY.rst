@@ -16,3 +16,10 @@ History
 ------------------
 
 * Adjusting the interpolations in the convergence plot and appending a parameter to control the number of lambda values.
+
+0.1.3 (2018-10-06)
+------------------
+
+* Addition of Bishop and Fellenius methods for LEM.
+* Fixing some issues with convergences.
+* Fixing minor issues.

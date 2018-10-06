@@ -729,10 +729,15 @@ class Astar:
             cmap = newcmap.from_list('BIMcmap', ['lightgray', 'black'], 2)
             ticks = [0.25, 0.75]
             ticksLabels = ['Allowed cells', 'Hindered cells']
+        if m > 50 or n > 50:
+            edgecolor = 'None'
+        else:
+            edgecolor = 'k'
         # Plot body
         fig = plt.figure()
         ax = fig.add_subplot(111)
-        bar = ax.pcolor(xCells, yCells, self.grid, cmap=cmap, edgecolor='k')
+        bar = ax.pcolor(xCells, yCells, self.grid, cmap=cmap,
+                        edgecolor=edgecolor)
         ax.plot(self.startNode[1], self.startNode[0], '*r', label='Start node')
         ax.plot(self.goalNode[1], self.goalNode[0], '.r', label='Goal node')
         if plotPreferredPath and self.preferredPath is not None:
