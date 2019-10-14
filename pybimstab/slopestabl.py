@@ -12,7 +12,8 @@ class SlopeStabl:
     safety against sliding of a slope. ::
 
         SlopeStabl(slices, seedFS=1, Kh=0, maxIter=50, tol=1e-3,
-                   interSlcFunc='halfsine', maxLambda=0.6)
+                   interSlcFunc='halfsine', minLambda=-0.6, maxLambda=0.6,
+                   nLambda=10)
 
     Attributes:
         slices (`Slices` object): object that contains the data structure of
@@ -75,7 +76,7 @@ slices, seedFS=1, Kh=0, maxIter=50, tol=1e-3,
         >>> stabAnalysis.__dict__.keys()
         dict_keys(['slices', 'Kh', 'seedFS', 'maxIter', 'tol', 'interSlcFunc',
                    'minLambda', 'maxLambda', 'nLambda', 'fsBishop',
-                   'fsFellenius', 'fsMoment', 'fsForces', 'lambda_',
+                   'fsJanbu', 'fsMoment', 'fsForces', 'lambda_',
                    'adjustment', 'FS'])
         """
 
@@ -265,11 +266,10 @@ slices, seedFS=1, Kh=0, maxIter=50, tol=1e-3,
             setattr(slice_, 'Er', 0)
         return
 
-    def calculateNormalForce(self, seedFS):
+    def calculateNormalForce(self, seedFS, fellenius=False):
         '''
         Method for calculating the normal force to the base; this is done by
-        using the Equation [16] of
-        `Fredlund & Krahn (1977) <https://doi.org/10.1139/t77-045>`_.
+        using the Equation of section 14.6 of `GeoSlope (2015) <http://downloads.geo-slope.com/geostudioresources/books/8/15/slope%20modeling.pdf>`_
 
         Since the normal forces are updated with each iteration, is necessary
         to input a factor of safety as a seed.
@@ -312,19 +312,25 @@ slices, seedFS=1, Kh=0, maxIter=50, tol=1e-3,
             # Calculating the normal force 'P' at the base of the slice_.
             c = slice_.material.cohesion
             phi = rad(slice_.material.frictAngle)
-            if seedFS == 0:
-                seedFS = 1
-            mAlpha = cos(rad(slice_.alpha)) + sin(rad(slice_.alpha)) * \
-                sin(rad(slice_.material.frictAngle)) / seedFS
-            P = (slice_.weight + slice_.Xr - slice_.Xl -
-                 (c * slice_.l - slice_.U * tan(phi)) *
-                 sin(rad(slice_.alpha)) / seedFS +
-                 slice_.extL * sin(rad(slice_.w))) / mAlpha
+            if fellenius:
+                P = slice_.weight * cos(rad(slice_.alpha)) - \
+                    self.Kh * slice_.weight * sin(rad(slice_.alpha))
+            else:
+                if seedFS == 0:
+                    seedFS = 1
+                mAlpha = cos(rad(slice_.alpha)) + sin(rad(slice_.alpha)) * \
+                    tan(phi) / seedFS
+                # Eq. [16] of Fredlund & Kranh (1977) does not work for now
+                # Eq. gotten from the section 14.6 of GEO-SLOPE (2015)
+                P = (slice_.weight + slice_.Xr - slice_.Xl -
+                     (c * slice_.l - slice_.U * tan(phi)) *
+                     sin(rad(slice_.alpha)) / seedFS +
+                     slice_.extL * sin(rad(slice_.w))) / mAlpha
             setattr(slice_, 'P', P)
             listP.append(P)
         return listP
 
-    def getFm(self, seedFS, lambda_=0):
+    def getFm(self, seedFS, lambda_=0, fellenius=False):
         '''
         Method for getting the factor of safety with respect to the moments
         equilimrium; this is done by using the Equation [22] of
@@ -378,7 +384,7 @@ slices, seedFS=1, Kh=0, maxIter=50, tol=1e-3,
         fs = [seedFS]
         for i in range(self.maxIter):
             # Calculating the normal force at each base slice_.
-            self.calculateNormalForce(fs[-1])
+            self.calculateNormalForce(fs[-1], fellenius)
             num = 0
             den1, den2, den3, den4 = 0, 0, 0, 0
             for slice_ in self.slices.slices:
@@ -391,6 +397,8 @@ slices, seedFS=1, Kh=0, maxIter=50, tol=1e-3,
                 den3 += slice_.extL * slice_.d
                 den4 += self.Kh * slice_.weight * slice_.e
             fs.append(num / (den1 - den2 + den3 + den4))
+            if fellenius:
+                break
 
             # Recalculating the interslice forces
             self.intersliceForces(fs[-1], lambda_)
@@ -483,17 +491,17 @@ slices, seedFS=1, Kh=0, maxIter=50, tol=1e-3,
 
     def intersliceForces(self, seedFS, lambda_):
         '''
-        Method for getting the shear and normal interslice forces, ; this is
+        Method for getting the shear and normal interslice forces; this is
         done by using the Equation of section 14.8 of
         `GeoSlope (2015) <http://downloads.geo-slope.com/geostudioresources/books/8/15/slope%20modeling.pdf>`_
-        for the rigth normal force and the Equation [16] of
+        for the rigth normal force and the Equation [18] of
         `Fredlund & Krahn (1977) <https://doi.org/10.1139/t77-045>`_ for the
         shear force.
 
         Since the interslice forces are updated with each iteration, is
         necessary to input a factor of safety as a seed and the current value
         of lambda to relate the interslice normal force and the interslice
-        force function with respect to the interslice shear force (Eq. [16] of
+        force function with respect to the interslice shear force (Eq. [20] of
         `Fredlund & Krahn (1977) <https://doi.org/10.1139/t77-045>`_).
 
         Args:
@@ -536,6 +544,7 @@ slices, seedFS=1, Kh=0, maxIter=50, tol=1e-3,
         from numpy import tan, cos, sin
         from numpy import radians as rad
 
+        self.slices.slices[0].El, self.slices.slices[0].Xl = 0, 0
         forcesE = [self.slices.slices[0].El]
         forcesX = [self.slices.slices[0].Xl]
         for i in range(self.slices.numSlices):
@@ -555,8 +564,10 @@ slices, seedFS=1, Kh=0, maxIter=50, tol=1e-3,
             slice_.Xr = slice_.Er * lambda_ * slice_.fR
             if i < self.slices.numSlices - 1:
                 nextSlice = self.slices.slices[i+1]
-                nextSlice.El = slice_.Er
-                nextSlice.Xl = slice_.Xr
+                nextSlice.El = -1 * slice_.Er
+                nextSlice.Xl = -1 * slice_.Xr
+            elif i == self.slices.numSlices-1:
+                slice_.Er, slice_.Xr = 0, 0
             forcesE.append(slice_.Er)
             forcesX.append(slice_.Xr)
         return (forcesE, forcesX)
@@ -597,7 +608,7 @@ slices, seedFS=1, Kh=0, maxIter=50, tol=1e-3,
 
             >>> stabAnalysis = SlopeStabl(slices, seedFS=1, Kh=0, nLambda=0)
             >>> stabAnalysis.iterateGLE()
-            {'fsBishop': 2.0267026043637175, 'fsFellenius': 1.770864711650081}
+            {'fsBishop': 2.0267026043637175, 'fsJanbu': 1.770864711650081}
         '''
         import numpy as np
         from pybimstab.tools import getIntersect
@@ -609,6 +620,9 @@ slices, seedFS=1, Kh=0, maxIter=50, tol=1e-3,
                     self.minLambda, self.maxLambda, self.nLambda)) + [0])
 
             # Iteration for moments
+            fsFellenius, tol = self.getFm(self.seedFS, lambda_=0,
+                                          fellenius=True)
+            setattr(self, 'fsFellenius', fsFellenius)
             fsBishop, tol = self.getFm(self.seedFS, lambda_=0)  # Moment equil.
             setattr(self, 'fsBishop', fsBishop)
             fsMoment, tolM = [fsBishop], list()
@@ -626,9 +640,9 @@ slices, seedFS=1, Kh=0, maxIter=50, tol=1e-3,
                     slice_.Er, slice_.El, slice_.Xr, slice_.Xl = 0, 0, 0, 0
 
             # Iteration for forces
-            fsFellenius, tol = self.getFf(self.seedFS, lambda_=0)  # Force eq.
-            setattr(self, 'fsFellenius', fsFellenius)
-            fsForces, tolF = [fsFellenius], list()
+            fsJanbu, tol = self.getFf(self.seedFS, lambda_=0)  # Force eq.
+            setattr(self, 'fsJanbu', fsJanbu)
+            fsForces, tolF = [fsJanbu], list()
             for lambda_ in lambdaVal:
                 fsF, tol = self.getFf(fsForces[-1], lambda_)
                 if max(fsF, fsForces[-1]) / min(fsF, fsForces[-1]) > 1.5:
@@ -666,11 +680,14 @@ slices, seedFS=1, Kh=0, maxIter=50, tol=1e-3,
                 self.getFf(fs, root)
             return {'fs': fs, 'lambda': root}
         else:
+            fsFellenius, tol = self.getFm(self.seedFS, lambda_=0,
+                                          fellenius=True)
+            setattr(self, 'fsFellenius', fsFellenius)
             fsBishop, tol = self.getFm(self.seedFS, lambda_=0)
             setattr(self, 'fsBishop', fsBishop)
-            fsFellenius, tol = self.getFf(self.seedFS, lambda_=0)
-            setattr(self, 'fsFellenius', fsFellenius)
-            return {'fsBishop': fsBishop, 'fsFellenius': fsFellenius}
+            fsJanbu, tol = self.getFf(self.seedFS, lambda_=0)
+            setattr(self, 'fsJanbu', fsJanbu)
+            return {'fsBishop': fsBishop, 'fsJanbu': fsJanbu}
 
     def plot(self):
         '''Method for generating a graphic of the slope stability analysis,
@@ -822,16 +839,18 @@ slices, seedFS=1, Kh=0, maxIter=50, tol=1e-3,
                                shrink=0.15, aspect=3)
             bar.ax.set_yticklabels(ticksLabels, fontsize='small')
         for slice_ in self.slices.slices:  # Plotting each slice
-            ax1.plot(slice_.coords[0], slice_.coords[1], ':r', lw=0.5)
-        ax1.plot(self.slices.slipSurfCoords[0], self.slices.slipSurfCoords[1],
-                 '-r')
-        ax1.plot(*self.slices.rotationPt, '.r', label='$f_\\mathrm{B} = ' +
-                 str(round(self.fsBishop, 3)) + '$ \n$f_\\mathrm{F} = ' +
-                 str(round(self.fsFellenius, 3)) + '$')
-        ax1.plot(self.slices.slopeCoords[0], self.slices.slopeCoords[1], '-k')
+            ax1.plot(*slice_.coords, ':r', lw=0.5)
+        ax1.plot(*self.slices.slipSurfCoords, '-r')
+        ax1.plot(*self.slices.rotationPt, '.r',
+                 label='$f_\\mathrm{s\ (Fellenius)} = ' +
+                 str(round(self.fsFellenius, 3)) +
+                 '$\n$f_\\mathrm{s\ (Bishop\ simp.)} = ' +
+                 str(round(self.fsBishop, 3)) +
+                 '$\n$f_\\mathrm{s\ (Janbu\ simp.)} = ' +
+                 str(round(self.fsJanbu, 3)) + '$')
+        ax1.plot(*self.slices.slopeCoords, '-k')
         if self.slices.watertabCoords is not None:
-            ax1.plot(self.slices.watertabCoords[0],
-                     self.slices.watertabCoords[1], 'deepskyblue', lw=0.9)
+            ax1.plot(*self.slices.watertabCoords, 'deepskyblue', lw=0.9)
         # Plot settings
         ax1.grid(True, ls='--', lw=0.5)
         ax1.axis('equal')
@@ -852,7 +871,7 @@ slices, seedFS=1, Kh=0, maxIter=50, tol=1e-3,
                                  round(max(self.lambda_), 1) + 0.1, 0.3)
             ax2.set_xticks(ax2Ticks)
             ax2.set_ylabel('$f_\\mathrm{s}$')
-            ax2.set_xlabel('$\\lambda_a$')
+            ax2.set_xlabel('$\\lambda$')
             lines = ax2.get_lines()
             legend1 = plt.legend([lines[i] for i in [1, 3]],
                                  ['$f_\\mathrm{m}$', '$f_\\mathrm{f}$'], loc=1,
@@ -867,7 +886,7 @@ slices, seedFS=1, Kh=0, maxIter=50, tol=1e-3,
                     framealpha=0.25, fontsize='medium', loc=8)
                 ax2.add_artist(legend2)
         else:
-            plt.legend(loc=2, framealpha=0.25)
+            plt.legend(loc=2, framealpha=0.25, fontsize='medium')
         fig.tight_layout()
         return fig
 

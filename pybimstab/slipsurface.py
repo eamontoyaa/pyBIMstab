@@ -656,8 +656,8 @@ class TortuousSurface:
                             cmap=cmap)
         if self.preferredPath is not None:
             ax.plot(self.preferredPath[0], self.preferredPath[1], ':r',
-                    lw=0.75, label='Preferred\npath')
-        ax.plot(self.coords[0], self.coords[1], '-r',
+                    lw=2.0, label='Preferred\npath')
+        ax.plot(self.coords[0], self.coords[1], '-r', lw=2.5,
                 label='Tortuous\nsurface')
         ax.plot(self.bim.slopeCoords[0], self.bim.slopeCoords[1], '-k')
         # Configuring the colorbar
@@ -666,7 +666,7 @@ class TortuousSurface:
         bar.ax.set_yticklabels(ticksLabels, fontsize='small')
         # Plot settings
         ax.set_aspect(1)
-        ax.legend(fontsize='small', bbox_to_anchor=(1.005, 1), loc=2)
+        ax.legend(fontsize='small', bbox_to_anchor=(1.005, 1), loc='best')
         ax.grid(True, ls='--', lw=0.5)
         ax.set_xlim((-0.02*self.bim.slopeCoords[0].max(),
                      1.02*self.bim.slopeCoords[0].max()))

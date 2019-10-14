@@ -106,35 +106,48 @@ class BlocksInMatrix:
 
         from pybimstab.polygon import Polygon
 
-        # Meshgrid for the lower-left corner of the tiles
-        yCells, xCells = np.mgrid[
-                slice(self.slopeCoords[1].min(),
-                      self.slopeCoords[1].max()+self.tileSize, self.tileSize),
-                slice(self.slopeCoords[0].min(),
-                      self.slopeCoords[0].max()+self.tileSize, self.tileSize)]
-        gridDim = np.array(xCells.shape) - 1  # dimension of the grid
-        # difference of heights and displacement of the meshgrid
-        gridHeight = gridDim[0] * self.tileSize
-        slopeHeight = self.slopeCoords[1].max() - self.slopeCoords[1].min()
-        dy = gridHeight - slopeHeight  # excedent at the top of the polygon
-        yCells -= dy
+        def defGrid(tileSize, blockProp):
+            # Meshgrid for the lower-left corner of the tiles
+            yCells, xCells = np.mgrid[
+                    slice(self.slopeCoords[1].min(),
+                          self.slopeCoords[1].max()+tileSize, tileSize),
+                    slice(self.slopeCoords[0].min(),
+                          self.slopeCoords[0].max()+tileSize, tileSize)]
+            gridDim = np.array(xCells.shape) - 1  # dimension of the grid
+            # difference of heights and displacement of the meshgrid
+            gridHeight = gridDim[0] * tileSize
+            slopeHeight = self.slopeCoords[1].max() - self.slopeCoords[1].min()
+            dy = gridHeight - slopeHeight  # excedent at the top of the polygon
+            yCells -= dy
 
-        # Pixels that are out of the slope boundary.
-        polygon = Polygon(self.slopeCoords)
-        inSlope = polygon.isinside(xCells[0, :-1] + 0.5 * self.tileSize,
-                                   yCells[:-1, 0] + 0.5 * self.tileSize,
-                                   meshgrid=True, want2plot=False)
-        outSlopeIdx = np.where(inSlope == 0)
+            # Pixels that are out of the slope boundary.
+            polygon = Polygon(self.slopeCoords)
+            inSlope = polygon.isinside(xCells[0, :-1] + 0.5 * tileSize,
+                                       yCells[:-1, 0] + 0.5 * tileSize,
+                                       meshgrid=True, want2plot=False)
+            outSlopeIdx = np.where(inSlope == 0)
 
-        # Creating the blocks from a random binomial distribution
-        np.random.seed(self.seed)  # defining the seed for repeatability
-        grid = np.random.binomial(1, self.blockProp, gridDim)
-        grid[outSlopeIdx] = -1  # Outer has cost -1
+            # Creating the blocks from a random binomial distribution
+            np.random.seed(self.seed)  # defining the seed for repeatability
+            grid = np.random.binomial(1, blockProp, gridDim)
+            grid[outSlopeIdx] = -1  # Outer has cost -1
+            return grid, xCells, yCells, outSlopeIdx
+
+        grid, xCells, yCells, outSlopeIdx = defGrid(
+                self.tileSize, self.blockProp)
+
+        gridAux, xCellsAux, yCellsAux, outSlopeIdxAux = defGrid(
+                self.tileSize * 0.2, 0)
 
         # Setting the attribute to the instanced object.
         setattr(self, 'grid', grid)
         setattr(self, 'xCells', xCells)
         setattr(self, 'yCells', yCells)
+        setattr(self, 'outSlopeIdx', outSlopeIdx)
+        setattr(self, 'gridAux', gridAux)
+        setattr(self, 'xCellsAux', xCellsAux)
+        setattr(self, 'yCellsAux', yCellsAux)
+        setattr(self, 'outSlopeIdxAux', outSlopeIdxAux)
         return grid
 
     def plot(self):
@@ -220,8 +233,9 @@ class BlocksInMatrix:
         bar.ax.set_yticklabels(ticksLabels, fontsize='small')
         # Plot settings
         ax.set_aspect(1)
-        ax.grid(True, ls='--', lw=0.5)
-        ax.grid(True, ls='--', lw=0.5)
+        ax.grid(False, ls='--', lw=0)
+#        ax.grid(True, ls='--', lw=0.5)
+#        ax.grid(True, ls='--', lw=0.5)
         ax.set_xlim((self.slopeCoords[0].min()-0.02*self.slopeCoords[0].max(),
                      1.02*self.slopeCoords[0].max()))
         ax.set_ylim((self.slopeCoords[1].min()-0.02*self.slopeCoords[1].max(),

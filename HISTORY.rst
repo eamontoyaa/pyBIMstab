@@ -23,3 +23,8 @@ History
 * Addition of Bishop and Fellenius methods for LEM.
 * Fixing some issues with convergences.
 * Fixing minor issues.
+
+0.1.4 (2019-10-13)
+------------------
+
+* Fixing minor issues.
