@@ -28,3 +28,8 @@ History
 ------------------
 
 * Fixing minor issues.
+
+0.1.5 (2019-10-15)
+------------------
+
+* Editing __init__.py file to import modules by means of an alias.
